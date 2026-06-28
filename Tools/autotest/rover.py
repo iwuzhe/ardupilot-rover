@@ -107,6 +107,7 @@ class AutoTestRover(vehicle_test_suite.TestSuite):
             )
 
     def ModeTrajectoryProtocol(self):
+        """Test trajectory upload, mode entry, zero output and stop handling."""
         trajectory_id = 42
         sequence = 1
 
@@ -139,6 +140,7 @@ class AutoTestRover(vehicle_test_suite.TestSuite):
         self.assert_trajectory_equal(ack["error"], 13, "not-armed error")
 
         self.change_mode("HOLD")
+        self.wait_ready_to_arm()
         self.arm_vehicle()
         start_location = self.mav.location()
 
