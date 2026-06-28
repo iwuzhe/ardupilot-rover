@@ -28,6 +28,9 @@ public:
         SMART_RTL    = 12,
         GUIDED       = 15,
         INITIALISING = 16,
+#if MODE_TRAJECTORY_ENABLED
+        TRAJECTORY   = 17,
+#endif
     };
 
     // Constructor
@@ -610,6 +613,36 @@ protected:
         Location start_loc; // starting location for checking horiz_max limit
     } limit;
 };
+
+#if MODE_TRAJECTORY_ENABLED
+class ModeTrajectory : public Mode
+{
+public:
+    Number mode_number() const override { return Number::TRAJECTORY; }
+    const char *name4() const override { return "TRJ"; }
+
+    void update() override;
+
+    bool is_autopilot_mode() const override { return true; }
+    bool allows_arming() const override { return false; }
+
+protected:
+    bool _enter() override;
+    void _exit() override;
+
+private:
+    void stop_with_warning(const char *reason);
+    void set_zero_output();
+
+    static constexpr uint32_t CONTROL_INTERVAL_US = 10000U;
+
+    AR_TrajectoryReference _reference {};
+    uint64_t _next_control_us = 0;
+    uint32_t _position_reset_ms = 0;
+    uint32_t _yaw_reset_ms = 0;
+    bool _failure_reported = false;
+};
+#endif
 
 
 class ModeHold : public Mode

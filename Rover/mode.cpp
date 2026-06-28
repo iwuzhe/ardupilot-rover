@@ -554,6 +554,11 @@ Mode *Rover::mode_from_mode_num(const enum Mode::Number num)
     case Mode::Number::GUIDED:
         ret = &mode_guided;
         break;
+#if MODE_TRAJECTORY_ENABLED
+    case Mode::Number::TRAJECTORY:
+        ret = &mode_trajectory;
+        break;
+#endif
     case Mode::Number::INITIALISING:
         ret = &mode_initializing;
         break;

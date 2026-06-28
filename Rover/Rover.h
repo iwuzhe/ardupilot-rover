@@ -53,6 +53,10 @@
 #include "defines.h"
 #include "config.h"
 
+#if MODE_TRAJECTORY_ENABLED
+#include <AR_Trajectory/AR_Trajectory.h>
+#endif
+
 #if AP_SCRIPTING_ENABLED
 #include <AP_Scripting/AP_Scripting.h>
 #endif
@@ -93,6 +97,9 @@ public:
     friend class ModeAuto;
     friend class ModeCircle;
     friend class ModeGuided;
+#if MODE_TRAJECTORY_ENABLED
+    friend class ModeTrajectory;
+#endif
     friend class ModeHold;
     friend class ModeLoiter;
     friend class ModeSteering;
@@ -243,11 +250,19 @@ private:
     // True when we are doing motor test
     bool motor_test;
 
+#if MODE_TRAJECTORY_ENABLED
+    AR_Trajectory trajectory;
+    uint32_t trajectory_upload_last_ms = 0;
+#endif
+
     ModeInitializing mode_initializing;
     ModeHold mode_hold;
     ModeManual mode_manual;
     ModeAcro mode_acro;
     ModeGuided mode_guided;
+#if MODE_TRAJECTORY_ENABLED
+    ModeTrajectory mode_trajectory;
+#endif
     ModeAuto mode_auto;
     ModeLoiter mode_loiter;
     ModeSteering mode_steering;

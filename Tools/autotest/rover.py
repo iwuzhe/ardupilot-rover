@@ -11,6 +11,7 @@ import copy
 import math
 import operator
 import os
+import struct
 import sys
 import time
 
@@ -35,6 +36,9 @@ SITL_START_LOCATION = mavutil.location(40.071374969556928,
 
 
 class AutoTestRover(vehicle_test_suite.TestSuite):
+    TRAJECTORY_PROTOCOL_VERSION = 1
+    TRAJECTORY_PAYLOAD_TYPE = 32768
+
     @staticmethod
     def get_not_armable_mode_list():
         return ["RTL", "SMART_RTL"]
@@ -57,6 +61,107 @@ class AutoTestRover(vehicle_test_suite.TestSuite):
 
     def log_name(self):
         return "Rover"
+
+    def send_trajectory_request(self, opcode, sequence, trajectory_id, body=b""):
+        payload = struct.pack(
+            "<BBHI",
+            self.TRAJECTORY_PROTOCOL_VERSION,
+            opcode,
+            sequence,
+            trajectory_id,
+        ) + body
+        padded_payload = list(bytearray(payload)) + [0] * (128 - len(payload))
+        self.mav.mav.tunnel_send(
+            self.sysid_thismav(),
+            mavutil.mavlink.MAV_COMP_ID_AUTOPILOT1,
+            self.TRAJECTORY_PAYLOAD_TYPE,
+            len(payload),
+            padded_payload,
+        )
+        while True:
+            message = self.assert_receive_message("TUNNEL", timeout=2)
+            if message.payload_type != self.TRAJECTORY_PAYLOAD_TYPE:
+                continue
+            ack_payload = bytes(bytearray(message.payload[:message.payload_length]))
+            if len(ack_payload) != 20:
+                raise NotAchievedException("Unexpected trajectory ACK length")
+            ack = struct.unpack("<BBHIBBBBHHf", ack_payload)
+            if ack[0] != self.TRAJECTORY_PROTOCOL_VERSION or ack[1] != 128:
+                raise NotAchievedException("Unexpected trajectory ACK header")
+            if ack[2] != sequence:
+                continue
+            return {
+                "trajectory_id": ack[3],
+                "request_opcode": ack[4],
+                "error": ack[5],
+                "state": ack[6],
+                "received_count": ack[8],
+                "expected_count": ack[9],
+                "duration_s": ack[10],
+            }
+
+    def assert_trajectory_equal(self, actual, expected, field):
+        if actual != expected:
+            raise NotAchievedException(
+                "Trajectory %s is %s, expected %s" % (field, actual, expected)
+            )
+
+    def ModeTrajectoryProtocol(self):
+        trajectory_id = 42
+        sequence = 1
+
+        ack = self.send_trajectory_request(1, sequence, trajectory_id)
+        self.assert_trajectory_equal(ack["error"], 0, "error")
+        self.assert_trajectory_equal(ack["state"], 0, "state")
+
+        point0 = struct.pack("<HHffffff", 0, 2, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+        sequence += 1
+        ack = self.send_trajectory_request(2, sequence, trajectory_id, point0)
+        self.assert_trajectory_equal(ack["error"], 0, "error")
+        self.assert_trajectory_equal(ack["received_count"], 1, "received count")
+
+        sequence += 1
+        ack = self.send_trajectory_request(3, sequence, trajectory_id, struct.pack("<H", 2))
+        self.assert_trajectory_equal(ack["error"], 10, "missing-point error")
+
+        point1 = struct.pack("<HHffffff", 1, 2, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0)
+        sequence += 1
+        ack = self.send_trajectory_request(2, sequence, trajectory_id, point1)
+        self.assert_trajectory_equal(ack["error"], 0, "error")
+
+        sequence += 1
+        ack = self.send_trajectory_request(3, sequence, trajectory_id, struct.pack("<H", 2))
+        self.assert_trajectory_equal(ack["error"], 0, "error")
+        self.assert_trajectory_equal(ack["state"], 2, "ready state")
+
+        sequence += 1
+        ack = self.send_trajectory_request(4, sequence, trajectory_id)
+        self.assert_trajectory_equal(ack["error"], 13, "not-armed error")
+
+        self.change_mode("HOLD")
+        self.arm_vehicle()
+        start_location = self.mav.location()
+
+        sequence += 1
+        ack = self.send_trajectory_request(4, sequence, trajectory_id)
+        self.assert_trajectory_equal(ack["error"], 0, "error")
+        self.assert_trajectory_equal(ack["state"], 3, "running state")
+
+        self.wait_message_field_values("HEARTBEAT", {"custom_mode": 17}, timeout=2)
+        self.delay_sim_time(1.2)
+
+        sequence += 1
+        ack = self.send_trajectory_request(6, sequence, trajectory_id)
+        self.assert_trajectory_equal(ack["error"], 0, "error")
+        self.assert_trajectory_equal(ack["state"], 4, "finished state")
+        if self.get_distance(start_location, self.mav.location()) >= 0.5:
+            raise NotAchievedException("Trajectory skeleton moved the vehicle")
+
+        sequence += 1
+        ack = self.send_trajectory_request(5, sequence, trajectory_id)
+        self.assert_trajectory_equal(ack["error"], 0, "error")
+        self.wait_mode("HOLD")
+        self.disarm_vehicle()
 
     def test_filepath(self):
         return os.path.realpath(__file__)
@@ -6981,6 +7086,7 @@ Brakes have negligible effect (with=%0.2fm without=%0.2fm delta=%0.2fm)
             self.SET_ATTITUDE_TARGET,
             self.SET_ATTITUDE_TARGET_heading,
             self.SET_POSITION_TARGET_LOCAL_NED,
+            self.ModeTrajectoryProtocol,
             self.MAV_CMD_DO_SET_MISSION_CURRENT,
             self.MAV_CMD_DO_CHANGE_SPEED,
             self.MAV_CMD_MISSION_START,

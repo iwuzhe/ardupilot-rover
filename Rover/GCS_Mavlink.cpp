@@ -6,6 +6,9 @@
 #include <AP_RangeFinder/AP_RangeFinder_Backend.h>
 #include <AP_EFI/AP_EFI_config.h>
 #include <AC_Avoidance/AP_OADatabase.h>
+#if MODE_TRAJECTORY_ENABLED
+#include "trajectory_protocol.h"
+#endif
 
 MAV_TYPE GCS_Rover::frame_type() const
 {
@@ -879,11 +882,166 @@ void GCS_MAVLINK_Rover::handle_message(const mavlink_message_t &msg)
         handle_set_position_target_global_int(msg);
         break;
 
+#if MODE_TRAJECTORY_ENABLED
+    case MAVLINK_MSG_ID_TUNNEL:
+        handle_trajectory_tunnel(msg);
+        break;
+#endif
+
     default:
         GCS_MAVLINK::handle_message(msg);
         break;
     }
 }
+
+#if MODE_TRAJECTORY_ENABLED
+static TrajectoryProtocol::Error trajectory_result_to_error(AR_Trajectory::Result result)
+{
+    switch (result) {
+    case AR_Trajectory::Result::OK:
+        return TrajectoryProtocol::Error::NONE;
+    case AR_Trajectory::Result::INVALID_STATE:
+        return TrajectoryProtocol::Error::INVALID_STATE;
+    case AR_Trajectory::Result::INVALID_ID:
+        return TrajectoryProtocol::Error::INVALID_ID;
+    case AR_Trajectory::Result::INVALID_INDEX:
+        return TrajectoryProtocol::Error::INVALID_INDEX;
+    case AR_Trajectory::Result::INVALID_COUNT:
+        return TrajectoryProtocol::Error::INVALID_COUNT;
+    case AR_Trajectory::Result::INVALID_POINT:
+        return TrajectoryProtocol::Error::INVALID_POINT;
+    case AR_Trajectory::Result::DUPLICATE_CONFLICT:
+        return TrajectoryProtocol::Error::DUPLICATE_CONFLICT;
+    case AR_Trajectory::Result::MISSING_POINT:
+        return TrajectoryProtocol::Error::MISSING_POINT;
+    case AR_Trajectory::Result::INVALID_TIME_AXIS:
+        return TrajectoryProtocol::Error::INVALID_TIME_AXIS;
+    case AR_Trajectory::Result::NOT_READY:
+        return TrajectoryProtocol::Error::NOT_READY;
+    }
+    return TrajectoryProtocol::Error::INVALID_STATE;
+}
+
+void GCS_MAVLINK_Rover::handle_trajectory_tunnel(const mavlink_message_t &msg)
+{
+    mavlink_tunnel_t tunnel;
+    mavlink_msg_tunnel_decode(&msg, &tunnel);
+
+    if (tunnel.target_system != mavlink_system.sysid ||
+        tunnel.target_component != mavlink_system.compid ||
+        tunnel.payload_type != TrajectoryProtocol::MAVLINK_PAYLOAD_TYPE) {
+        return;
+    }
+
+    TrajectoryProtocol::Request request {};
+    TrajectoryProtocol::Error error = TrajectoryProtocol::decode_request(tunnel.payload, tunnel.payload_length, request);
+
+    const uint32_t now_ms = AP_HAL::millis();
+    const bool upload_timed_out = rover.trajectory.state() == AR_Trajectory::State::LOADING &&
+                                  rover.trajectory_upload_last_ms != 0 &&
+                                  now_ms - rover.trajectory_upload_last_ms > TrajectoryProtocol::UPLOAD_TIMEOUT_MS;
+    if (upload_timed_out) {
+        rover.trajectory.clear();
+        rover.trajectory_upload_last_ms = 0;
+        if (error == TrajectoryProtocol::Error::NONE && request.opcode != TrajectoryProtocol::Opcode::CLEAR) {
+            error = TrajectoryProtocol::Error::UPLOAD_TIMEOUT;
+        }
+    }
+
+    if (error == TrajectoryProtocol::Error::NONE) {
+        switch (request.opcode) {
+        case TrajectoryProtocol::Opcode::CLEAR:
+            if (request.trajectory_id == 0) {
+                error = TrajectoryProtocol::Error::INVALID_ID;
+            } else if (rover.trajectory.running() || rover.control_mode == &rover.mode_trajectory) {
+                error = TrajectoryProtocol::Error::INVALID_STATE;
+            } else {
+                rover.trajectory.clear(request.trajectory_id);
+                rover.trajectory_upload_last_ms = now_ms;
+            }
+            break;
+
+        case TrajectoryProtocol::Opcode::POINT:
+            error = trajectory_result_to_error(rover.trajectory.set_point(request.trajectory_id,
+                                                                           request.point_index,
+                                                                           request.point_count,
+                                                                           request.point));
+            if (error == TrajectoryProtocol::Error::NONE) {
+                rover.trajectory_upload_last_ms = now_ms;
+            }
+            break;
+
+        case TrajectoryProtocol::Opcode::FINALISE:
+            error = trajectory_result_to_error(rover.trajectory.finalise(request.trajectory_id,
+                                                                          request.point_count));
+            if (error == TrajectoryProtocol::Error::NONE) {
+                rover.trajectory_upload_last_ms = 0;
+            }
+            break;
+
+        case TrajectoryProtocol::Opcode::START:
+            if (request.trajectory_id != rover.trajectory.trajectory_id()) {
+                error = TrajectoryProtocol::Error::INVALID_ID;
+            } else if (!rover.trajectory.loaded()) {
+                error = TrajectoryProtocol::Error::NOT_READY;
+            } else if (!rover.arming.is_armed()) {
+                error = TrajectoryProtocol::Error::NOT_ARMED;
+            } else if (rover.control_mode == &rover.mode_trajectory ||
+                       !rover.set_mode(rover.mode_trajectory, ModeReason::GCS_COMMAND)) {
+                error = TrajectoryProtocol::Error::MODE_CHANGE_FAILED;
+            }
+            break;
+
+        case TrajectoryProtocol::Opcode::STOP:
+            if (request.trajectory_id != rover.trajectory.trajectory_id()) {
+                error = TrajectoryProtocol::Error::INVALID_ID;
+            } else {
+                rover.trajectory.stop();
+                if (rover.control_mode == &rover.mode_trajectory &&
+                    !rover.set_mode(rover.mode_hold, ModeReason::GCS_COMMAND)) {
+                    error = TrajectoryProtocol::Error::MODE_CHANGE_FAILED;
+                }
+            }
+            break;
+
+        case TrajectoryProtocol::Opcode::STATUS:
+            break;
+
+        case TrajectoryProtocol::Opcode::ACK:
+        default:
+            error = TrajectoryProtocol::Error::INVALID_OPCODE;
+            break;
+        }
+    }
+
+    if (!HAVE_PAYLOAD_SPACE(chan, TUNNEL)) {
+        return;
+    }
+
+    const TrajectoryProtocol::Ack ack {
+        request.sequence,
+        rover.trajectory.trajectory_id(),
+        request.opcode,
+        error,
+        rover.trajectory.state(),
+        rover.trajectory.received_count(),
+        rover.trajectory.expected_count(),
+        rover.trajectory.duration_s(),
+    };
+    uint8_t payload[TrajectoryProtocol::MAX_PAYLOAD_LENGTH] {};
+    const uint8_t payload_length = TrajectoryProtocol::encode_ack(ack, payload, sizeof(payload));
+    if (payload_length == 0) {
+        return;
+    }
+
+    mavlink_msg_tunnel_send(chan,
+                            msg.sysid,
+                            msg.compid,
+                            TrajectoryProtocol::MAVLINK_PAYLOAD_TYPE,
+                            payload_length,
+                            payload);
+}
+#endif // MODE_TRAJECTORY_ENABLED
 
 void GCS_MAVLINK_Rover::handle_manual_control_axes(const mavlink_manual_control_t &packet, const uint32_t tnow)
 {
@@ -1075,7 +1233,7 @@ void GCS_MAVLINK_Rover::handle_set_position_target_global_int(const mavlink_mess
     default:
         return;
     }
-    
+
     bool pos_ignore = packet.type_mask & MAVLINK_SET_POS_TYPE_MASK_POS_IGNORE;
     bool vel_ignore = packet.type_mask & MAVLINK_SET_POS_TYPE_MASK_VEL_IGNORE;
     bool acc_ignore = packet.type_mask & MAVLINK_SET_POS_TYPE_MASK_ACC_IGNORE;
@@ -1184,7 +1342,7 @@ uint8_t GCS_MAVLINK_Rover::high_latency_tgt_heading() const
     }
     return 0;
 }
-    
+
 uint16_t GCS_MAVLINK_Rover::high_latency_tgt_dist() const
 {
     const Mode *control_mode = rover.control_mode;

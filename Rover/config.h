@@ -59,6 +59,12 @@
 # define MODE_FOLLOW_ENABLED AP_FOLLOW_ENABLED
 #endif
 
+//////////////////////////////////////////////////////////////////////////////
+// Trajectory mode - follows a time-indexed trajectory uploaded over MAVLink
+#ifndef MODE_TRAJECTORY_ENABLED
+# define MODE_TRAJECTORY_ENABLED (CONFIG_HAL_BOARD == HAL_BOARD_SITL)
+#endif
+
 
 //////////////////////////////////////////////////////////////////////////////
 // Developer Items
