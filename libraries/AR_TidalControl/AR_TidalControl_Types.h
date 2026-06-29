@@ -25,7 +25,9 @@ struct AR_SlipEstimate {
     float residual_left;
     float residual_right;
     float confidence;
+    uint32_t measurement_time_ms;
     bool valid;
+    bool new_data;
 };
 
 struct AR_TidalControlOutput {
@@ -33,10 +35,13 @@ struct AR_TidalControlOutput {
     float yaw_rate_cmd_radps;
     float wheel_rate_left_cmd_radps;
     float wheel_rate_right_cmd_radps;
+    float wheel_rate_left_nominal_radps;
+    float wheel_rate_right_nominal_radps;
     bool valid;
     bool stop_required;
     bool ppc_violation;
     bool wheel_rate_output;
+    bool slip_compensation_applied;
 };
 
 struct AR_BacksteppingPPCDebug {
@@ -47,8 +52,11 @@ struct AR_BacksteppingPPCDebug {
     float error_yaw_rad;
     float error_speed_mps;
     float ppc_rho_m;
+    float ppc_rho_base_m;
     float ppc_xi;
+    float ppc_slip_factor;
     float trajectory_progress;
     bool ppc_active;
     bool ppc_fallback;
+    bool ppc_slip_scheduled;
 };

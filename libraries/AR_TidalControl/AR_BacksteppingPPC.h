@@ -23,6 +23,11 @@ public:
         float ppc_rho_final_m = 0.08f;
         float ppc_progress_decay = 4.0f;
         float ppc_xi_max = 0.97f;
+        float ppc_slip_min = -1.20f;
+        float ppc_slip_max = 1.20f;
+        float ppc_slip_deadzone = 0.05f;
+        float ppc_slip_full = 0.20f;
+        float ppc_rho_relax_m = 0.12f;
         float dt_max_s = 0.1f;
     };
 
@@ -31,7 +36,16 @@ public:
 
     void reset();
     bool update(const AR_TidalState &state, const AR_TrajectoryReference &reference,
-                float trajectory_progress, bool use_ppc, AR_TidalControlOutput &output);
+                float trajectory_progress, const AR_SlipEstimate &slip,
+                bool use_ppc, bool use_slip_aware_ppc,
+                AR_TidalControlOutput &output);
+    bool update(const AR_TidalState &state, const AR_TrajectoryReference &reference,
+                float trajectory_progress, bool use_ppc, AR_TidalControlOutput &output)
+    {
+        const AR_SlipEstimate slip {};
+        return update(state, reference, trajectory_progress, slip,
+                      use_ppc, false, output);
+    }
 
     const AR_BacksteppingPPCDebug &debug() const { return _debug; }
 

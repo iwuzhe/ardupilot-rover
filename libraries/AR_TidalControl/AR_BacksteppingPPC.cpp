@@ -43,7 +43,8 @@ float AR_BacksteppingPPC::rate_limit(float command, float previous, float rate_m
 
 bool AR_BacksteppingPPC::update(const AR_TidalState &state,
                                 const AR_TrajectoryReference &reference,
-                                float trajectory_progress, bool use_ppc,
+                                float trajectory_progress, const AR_SlipEstimate &slip,
+                                bool use_ppc, bool use_slip_aware_ppc,
                                 AR_TidalControlOutput &output)
 {
     output = {};
@@ -72,14 +73,37 @@ bool AR_BacksteppingPPC::update(const AR_TidalState &state,
 
     float transformed_error_y = error_y_control;
     float rho_y = 0.0f;
+    float rho_base = 0.0f;
     float xi_y = 0.0f;
+    float slip_factor = 0.0f;
+    bool slip_scheduled = false;
     bool ppc_fallback = false;
     bool ppc_violation = false;
 
     if (use_ppc) {
-        rho_y = _config.ppc_rho_final_m +
-                (_config.ppc_rho_initial_m - _config.ppc_rho_final_m) *
-                expf(-_config.ppc_progress_decay * progress);
+        rho_base = _config.ppc_rho_final_m +
+                   (_config.ppc_rho_initial_m - _config.ppc_rho_final_m) *
+                   expf(-_config.ppc_progress_decay * progress);
+        rho_y = rho_base;
+        if (use_slip_aware_ppc && slip.valid &&
+            isfinite(slip.slip_left) && isfinite(slip.slip_right)) {
+            const float slip_left = constrain_float(slip.slip_left,
+                                                    _config.ppc_slip_min,
+                                                    _config.ppc_slip_max);
+            const float slip_right = constrain_float(slip.slip_right,
+                                                     _config.ppc_slip_min,
+                                                     _config.ppc_slip_max);
+            const float slip_difference = fabsf(slip_right - slip_left);
+            const float schedule_denominator = MAX(_config.ppc_slip_full -
+                                                   _config.ppc_slip_deadzone,
+                                                   1.0e-6f);
+            slip_factor = 0.5f *
+                          (1.0f + tanhf((slip_difference - _config.ppc_slip_deadzone) /
+                                        schedule_denominator));
+            rho_y = MAX(rho_base + _config.ppc_rho_relax_m * slip_factor,
+                        _config.ppc_rho_final_m);
+            slip_scheduled = true;
+        }
         if (!is_positive(rho_y) || !isfinite(rho_y)) {
             ppc_fallback = true;
             ppc_violation = true;
@@ -148,10 +172,13 @@ bool AR_BacksteppingPPC::update(const AR_TidalState &state,
     _debug.error_yaw_rad = error_yaw;
     _debug.error_speed_mps = error_speed;
     _debug.ppc_rho_m = rho_y;
+    _debug.ppc_rho_base_m = rho_base;
     _debug.ppc_xi = xi_y;
+    _debug.ppc_slip_factor = slip_factor;
     _debug.trajectory_progress = progress;
     _debug.ppc_active = use_ppc && !ppc_fallback;
     _debug.ppc_fallback = ppc_fallback;
+    _debug.ppc_slip_scheduled = slip_scheduled;
     return true;
 }
 #endif

@@ -177,6 +177,33 @@ AR_Trajectory::Result AR_Trajectory::sample(uint64_t now_us, AR_TrajectoryRefere
     return Result::OK;
 }
 
+bool AR_Trajectory::closest_progress(float x_m, float y_m, uint16_t start_index,
+                                     uint16_t &closest_index, float &progress) const
+{
+    if (!_finalised || _expected_count < 2 || start_index >= _expected_count ||
+        !isfinite(x_m) || !isfinite(y_m)) {
+        return false;
+    }
+
+    uint16_t best_index = start_index;
+    float best_distance_squared = sq(_points[start_index].x_m - x_m) +
+                                  sq(_points[start_index].y_m - y_m);
+    const uint16_t end_index = MIN(static_cast<uint16_t>(start_index + 20U),
+                                   static_cast<uint16_t>(_expected_count - 1U));
+    for (uint16_t index = start_index + 1U; index <= end_index; index++) {
+        const float distance_squared = sq(_points[index].x_m - x_m) +
+                                       sq(_points[index].y_m - y_m);
+        if (distance_squared < best_distance_squared) {
+            best_distance_squared = distance_squared;
+            best_index = index;
+        }
+    }
+
+    closest_index = best_index;
+    progress = static_cast<float>(best_index) / static_cast<float>(_expected_count - 1U);
+    return true;
+}
+
 float AR_Trajectory::duration_s() const
 {
     if (!_finalised || _expected_count == 0) {

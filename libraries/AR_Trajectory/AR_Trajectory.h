@@ -44,6 +44,8 @@ public:
     Result start(uint64_t now_us);
     void stop();
     Result sample(uint64_t now_us, AR_TrajectoryReference &reference);
+    bool closest_progress(float x_m, float y_m, uint16_t start_index,
+                          uint16_t &closest_index, float &progress) const;
 
     bool loaded() const { return _finalised; }
     bool running() const { return _state == State::RUNNING; }

@@ -633,7 +633,7 @@ protected:
 private:
     void stop_with_warning(const char *reason);
     void set_zero_output();
-    void apply_output();
+    bool apply_output();
 
     static constexpr uint32_t CONTROL_INTERVAL_US = 10000U;
 
@@ -643,6 +643,7 @@ private:
     uint64_t _last_control_us = 0;
     uint32_t _position_reset_ms = 0;
     uint32_t _yaw_reset_ms = 0;
+    uint16_t _closest_trajectory_index = 0;
     bool _failure_reported = false;
     bool _have_control_output = false;
 };

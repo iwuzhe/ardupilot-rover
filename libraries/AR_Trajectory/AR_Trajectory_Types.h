@@ -14,3 +14,4 @@ struct AR_TrajectoryPoint {
 struct AR_TrajectoryReference : AR_TrajectoryPoint {
     uint16_t segment_index;
 };
+

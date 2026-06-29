@@ -15,6 +15,7 @@ bool ModeTrajectory::_enter()
     _failure_reported = false;
     _have_control_output = false;
     _control_output = {};
+    _closest_trajectory_index = 0;
     rover.tidal_control.reset();
 
     const uint64_t now_us = AP_HAL::micros64();
@@ -41,10 +42,33 @@ void ModeTrajectory::set_zero_output()
     g2.motors.set_steering(0.0f);
 }
 
-void ModeTrajectory::apply_output()
+bool ModeTrajectory::apply_output()
 {
+    if (_control_output.wheel_rate_output) {
+        const float wheel_rate_max = g2.wheel_rate_control.get_rate_max_rads();
+        if (!g2.motors.have_skid_steering() ||
+            !g2.wheel_rate_control.enabled(0) ||
+            !g2.wheel_rate_control.enabled(1) ||
+            !is_positive(wheel_rate_max)) {
+            return false;
+        }
+
+        const float left_rate_pct = constrain_float(
+            100.0f * _control_output.wheel_rate_left_cmd_radps / wheel_rate_max,
+            -100.0f, 100.0f);
+        const float right_rate_pct = constrain_float(
+            100.0f * _control_output.wheel_rate_right_cmd_radps / wheel_rate_max,
+            -100.0f, 100.0f);
+        const float throttle_pct = 0.5f * (left_rate_pct + right_rate_pct);
+        const float steering = 22.5f * (left_rate_pct - right_rate_pct);
+        g2.motors.set_steering(steering, false);
+        g2.motors.set_throttle(throttle_pct);
+        return true;
+    }
+
     calc_steering_from_turn_rate(_control_output.yaw_rate_cmd_radps);
     calc_throttle(_control_output.speed_cmd_mps, false);
+    return true;
 }
 
 void ModeTrajectory::stop_with_warning(const char *reason)
@@ -86,8 +110,8 @@ void ModeTrajectory::update()
 
     const uint64_t now_us = AP_HAL::micros64();
     if (now_us < _next_control_us) {
-        if (_have_control_output) {
-            apply_output();
+        if (_have_control_output && !apply_output()) {
+            stop_with_warning("wheel-rate output unavailable");
         }
         return;
     }
@@ -120,8 +144,36 @@ void ModeTrajectory::update()
     state.position_valid = true;
     state.velocity_valid = true;
 
-    const float duration_s = rover.trajectory.duration_s();
-    const float progress = is_positive(duration_s) ? _reference.time_s / duration_s : 0.0f;
+    const uint32_t now_ms = AP_HAL::millis();
+    if (g2.wheel_encoder.num_sensors() >= 2) {
+        state.wheel_rate_left_radps = g2.wheel_encoder.get_rate(0);
+        state.wheel_rate_right_radps = g2.wheel_encoder.get_rate(1);
+        state.wheel_left_time_ms = g2.wheel_encoder.get_last_reading_ms(0);
+        state.wheel_right_time_ms = g2.wheel_encoder.get_last_reading_ms(1);
+        state.wheel_left_valid = g2.wheel_encoder.healthy(0) &&
+                                 now_ms - state.wheel_left_time_ms <= AP_WHEEL_RATE_CONTROL_TIMEOUT_MS;
+        state.wheel_right_valid = g2.wheel_encoder.healthy(1) &&
+                                  now_ms - state.wheel_right_time_ms <= AP_WHEEL_RATE_CONTROL_TIMEOUT_MS;
+    }
+
+    const bool wheel_measurements_valid = state.wheel_left_valid && state.wheel_right_valid;
+    const bool wheel_rate_output_available = wheel_measurements_valid &&
+                                             g2.motors.have_skid_steering() &&
+                                             g2.wheel_rate_control.enabled(0) &&
+                                             g2.wheel_rate_control.enabled(1) &&
+                                             is_positive(g2.wheel_rate_control.get_rate_max_rads());
+    rover.tidal_control.set_use_residual_smo(wheel_measurements_valid);
+    rover.tidal_control.set_use_wheel_compensation(wheel_rate_output_available);
+    rover.tidal_control.set_wheel_rate_limit(g2.wheel_rate_control.get_rate_max_rads());
+
+    float progress;
+    if (!rover.trajectory.closest_progress(state.x_m, state.y_m,
+                                           _closest_trajectory_index,
+                                           _closest_trajectory_index,
+                                           progress)) {
+        stop_with_warning("trajectory progress invalid");
+        return;
+    }
     if (!rover.tidal_control.update(state, _reference, progress, _control_output) ||
         !_control_output.valid || _control_output.stop_required) {
         stop_with_warning("control output invalid");
@@ -129,7 +181,9 @@ void ModeTrajectory::update()
     }
 
     _have_control_output = true;
-    apply_output();
+    if (!apply_output()) {
+        stop_with_warning("wheel-rate output unavailable");
+    }
 }
 
 #endif // MODE_TRAJECTORY_ENABLED

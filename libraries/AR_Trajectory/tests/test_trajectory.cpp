@@ -80,4 +80,23 @@ TEST(AR_Trajectory, finishes_at_last_point)
     EXPECT_FLOAT_EQ(reference.x_m, 1.0f);
 }
 
+TEST(AR_Trajectory, finds_monotonic_spatial_progress)
+{
+    AR_Trajectory trajectory;
+    EXPECT_EQ(trajectory.set_point(5, 0, 3, make_point(0.0f, 0.0f, 0.0f)), AR_Trajectory::Result::OK);
+    EXPECT_EQ(trajectory.set_point(5, 1, 3, make_point(1.0f, 1.0f, 0.0f)), AR_Trajectory::Result::OK);
+    EXPECT_EQ(trajectory.set_point(5, 2, 3, make_point(2.0f, 2.0f, 0.0f)), AR_Trajectory::Result::OK);
+    EXPECT_EQ(trajectory.finalise(5, 3), AR_Trajectory::Result::OK);
+
+    uint16_t closest_index = 0;
+    float progress = 0.0f;
+    ASSERT_TRUE(trajectory.closest_progress(1.1f, 2.2f, 0, closest_index, progress));
+    EXPECT_EQ(closest_index, 1);
+    EXPECT_FLOAT_EQ(progress, 0.5f);
+
+    ASSERT_TRUE(trajectory.closest_progress(0.0f, 0.0f, closest_index, closest_index, progress));
+    EXPECT_EQ(closest_index, 1);
+    EXPECT_FLOAT_EQ(progress, 0.5f);
+}
+
 AP_GTEST_MAIN()

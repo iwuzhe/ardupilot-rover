@@ -15,20 +15,26 @@ public:
                 float trajectory_progress, AR_TidalControlOutput &output);
 
     void set_use_ppc(bool enable) { _use_ppc = enable; }
-    void set_use_residual_smo(bool enable) { _use_residual_smo = enable; }
-    void set_use_wheel_compensation(bool enable) { _use_wheel_compensation = enable; }
+    void set_use_slip_aware_ppc(bool enable) { _use_slip_aware_ppc = enable; }
+    void set_use_residual_smo(bool enable);
+    void set_use_wheel_compensation(bool enable);
+    void set_wheel_rate_limit(float wheel_rate_max_radps);
 
     bool use_ppc() const { return _use_ppc; }
+    bool use_slip_aware_ppc() const { return _use_slip_aware_ppc; }
     bool use_residual_smo() const { return _use_residual_smo; }
     bool use_wheel_compensation() const { return _use_wheel_compensation; }
 
     const AR_BacksteppingPPCDebug &backstepping_debug() const { return _backstepping.debug(); }
+    const AR_SlipEstimate &slip_estimate() const { return _slip_estimate; }
 
 private:
     AR_ResidualSMO _residual_smo;
     AR_BacksteppingPPC _backstepping;
     AR_WheelCompensation _wheel_compensation;
+    AR_SlipEstimate _slip_estimate {};
     bool _use_ppc = true;
+    bool _use_slip_aware_ppc = true;
     bool _use_residual_smo = false;
     bool _use_wheel_compensation = false;
 };
