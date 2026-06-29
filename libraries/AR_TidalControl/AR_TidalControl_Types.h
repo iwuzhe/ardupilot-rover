@@ -38,3 +38,17 @@ struct AR_TidalControlOutput {
     bool ppc_violation;
     bool wheel_rate_output;
 };
+
+struct AR_BacksteppingPPCDebug {
+    float error_x_m;
+    float error_y_m;
+    float error_y_control_m;
+    float error_y_transformed;
+    float error_yaw_rad;
+    float error_speed_mps;
+    float ppc_rho_m;
+    float ppc_xi;
+    float trajectory_progress;
+    bool ppc_active;
+    bool ppc_fallback;
+};

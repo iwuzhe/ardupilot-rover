@@ -55,6 +55,7 @@
 
 #if MODE_TRAJECTORY_ENABLED
 #include <AR_Trajectory/AR_Trajectory.h>
+#include <AR_TidalControl/AR_TidalControl.h>
 #endif
 
 #if AP_SCRIPTING_ENABLED
@@ -252,6 +253,7 @@ private:
 
 #if MODE_TRAJECTORY_ENABLED
     AR_Trajectory trajectory;
+    AR_TidalControl tidal_control;
     uint32_t trajectory_upload_last_ms = 0;
 #endif
 

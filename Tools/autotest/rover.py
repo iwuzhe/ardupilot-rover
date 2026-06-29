@@ -107,7 +107,7 @@ class AutoTestRover(vehicle_test_suite.TestSuite):
             )
 
     def ModeTrajectoryProtocol(self):
-        """Test trajectory upload, mode entry, zero output and stop handling."""
+        """Test trajectory upload, stationary tracking and stop handling."""
         trajectory_id = 42
         sequence = 1
 
@@ -125,7 +125,7 @@ class AutoTestRover(vehicle_test_suite.TestSuite):
         ack = self.send_trajectory_request(3, sequence, trajectory_id, struct.pack("<H", 2))
         self.assert_trajectory_equal(ack["error"], 10, "missing-point error")
 
-        point1 = struct.pack("<HHffffff", 1, 2, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0)
+        point1 = struct.pack("<HHffffff", 1, 2, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0)
         sequence += 1
         ack = self.send_trajectory_request(2, sequence, trajectory_id, point1)
         self.assert_trajectory_equal(ack["error"], 0, "error")
@@ -157,7 +157,7 @@ class AutoTestRover(vehicle_test_suite.TestSuite):
         self.assert_trajectory_equal(ack["error"], 0, "error")
         self.assert_trajectory_equal(ack["state"], 4, "finished state")
         if self.get_distance(start_location, self.mav.location()) >= 0.5:
-            raise NotAchievedException("Trajectory skeleton moved the vehicle")
+            raise NotAchievedException("Stationary trajectory moved the vehicle")
 
         sequence += 1
         ack = self.send_trajectory_request(5, sequence, trajectory_id)

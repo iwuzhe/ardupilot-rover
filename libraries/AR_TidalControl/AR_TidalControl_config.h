@@ -1,0 +1,11 @@
+#pragma once
+
+#include <AP_HAL/AP_HAL_Boards.h>
+
+#ifndef AR_TIDAL_CONTROL_ENABLED
+# ifdef MODE_TRAJECTORY_ENABLED
+#  define AR_TIDAL_CONTROL_ENABLED MODE_TRAJECTORY_ENABLED
+# else
+#  define AR_TIDAL_CONTROL_ENABLED (CONFIG_HAL_BOARD == HAL_BOARD_SITL)
+# endif
+#endif
