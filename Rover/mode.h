@@ -634,6 +634,7 @@ private:
     void stop_with_warning(const char *reason);
     void set_zero_output();
     bool apply_output();
+    void write_log(const AR_TidalState &state, float progress) const;
 
     static constexpr uint32_t CONTROL_INTERVAL_US = 10000U;
 
@@ -646,6 +647,7 @@ private:
     uint16_t _closest_trajectory_index = 0;
     bool _failure_reported = false;
     bool _have_control_output = false;
+    bool _terminal_complete = false;
 };
 #endif
 

@@ -111,6 +111,27 @@ class AutoTestRover(vehicle_test_suite.TestSuite):
         trajectory_id = 42
         sequence = 1
 
+        self.assert_parameter_value("TRJ_PPC_EN", 0)
+        self.assert_parameter_value("TRJ_SPPC_EN", 0)
+        self.assert_parameter_value("TRJ_SMO_EN", 0)
+        self.assert_parameter_value("TRJ_WCOMP_EN", 0)
+        self.assert_parameter_value("TRJ_LOG_EN", 1)
+        self.set_parameter("TRJ_PPC_EN", 1)
+        self.set_parameter("TRJ_WCOMP_EN", 1)
+
+        expired_trajectory_id = 41
+        ack = self.send_trajectory_request(1, sequence, expired_trajectory_id)
+        self.assert_trajectory_equal(ack["error"], 0, "error")
+        expired_point = struct.pack("<HHffffff", 0, 2, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+        sequence += 1
+        ack = self.send_trajectory_request(2, sequence, expired_trajectory_id, expired_point)
+        self.assert_trajectory_equal(ack["error"], 0, "error")
+        self.delay_sim_time(5.2)
+        sequence += 1
+        ack = self.send_trajectory_request(6, sequence, expired_trajectory_id)
+        self.assert_trajectory_equal(ack["error"], 15, "upload-timeout error")
+
+        sequence += 1
         ack = self.send_trajectory_request(1, sequence, trajectory_id)
         self.assert_trajectory_equal(ack["error"], 0, "error")
         self.assert_trajectory_equal(ack["state"], 0, "state")
@@ -164,6 +185,14 @@ class AutoTestRover(vehicle_test_suite.TestSuite):
         self.assert_trajectory_equal(ack["error"], 0, "error")
         self.wait_mode("HOLD")
         self.disarm_vehicle()
+        if not self.current_onboard_log_contains_message("TRJR"):
+            raise NotAchievedException("Trajectory reference log message not found")
+        if not self.current_onboard_log_contains_message("TRJC"):
+            raise NotAchievedException("Trajectory controller log message not found")
+        if not self.current_onboard_log_contains_message("TRJS"):
+            raise NotAchievedException("Trajectory slip log message not found")
+        if not self.current_onboard_log_contains_message("TRJW"):
+            raise NotAchievedException("Trajectory wheel log message not found")
 
     def test_filepath(self):
         return os.path.realpath(__file__)

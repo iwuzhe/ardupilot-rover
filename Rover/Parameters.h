@@ -435,6 +435,14 @@ public:
     // FS GCS timeout trigger time
     AP_Float fs_gcs_timeout;
 
+#if MODE_TRAJECTORY_ENABLED
+    AP_Int8 traj_ppc_enable;
+    AP_Int8 traj_slip_ppc_enable;
+    AP_Int8 traj_smo_enable;
+    AP_Int8 traj_wcomp_enable;
+    AP_Int8 traj_log_enable;
+#endif
+
     class ModeCircle mode_circle;
 };
 

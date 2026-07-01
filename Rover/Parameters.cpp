@@ -694,6 +694,43 @@ const AP_Param::GroupInfo ParametersG2::var_info[] = {
     // @Path: mode_circle.cpp
     AP_SUBGROUPINFO(mode_circle, "CIRC", 57, ParametersG2, ModeCircle),
 
+#if MODE_TRAJECTORY_ENABLED
+    // @Param: TRJ_PPC_EN
+    // @DisplayName: Trajectory PPC enable
+    // @Description: Enables prescribed-performance lateral error transformation in Trajectory mode
+    // @Values: 0:Disabled,1:Enabled
+    // @User: Advanced
+    AP_GROUPINFO("TRJ_PPC_EN", 58, ParametersG2, traj_ppc_enable, 0),
+
+    // @Param: TRJ_SPPC_EN
+    // @DisplayName: Trajectory slip-aware PPC enable
+    // @Description: Enables slip scheduling of the PPC boundary. Also requires TRJ_PPC_EN and TRJ_SMO_EN
+    // @Values: 0:Disabled,1:Enabled
+    // @User: Advanced
+    AP_GROUPINFO("TRJ_SPPC_EN", 59, ParametersG2, traj_slip_ppc_enable, 0),
+
+    // @Param: TRJ_SMO_EN
+    // @DisplayName: Trajectory residual SMO enable
+    // @Description: Enables the Residual-SMO slip observer in Trajectory mode when two healthy wheel encoders are available
+    // @Values: 0:Disabled,1:Enabled
+    // @User: Advanced
+    AP_GROUPINFO("TRJ_SMO_EN", 60, ParametersG2, traj_smo_enable, 0),
+
+    // @Param: TRJ_WCOMP_EN
+    // @DisplayName: Trajectory wheel compensation enable
+    // @Description: Enables wheel-rate slip compensation. Requires skid steering, two encoders, TRJ_SMO_EN and WRC_ENABLE
+    // @Values: 0:Disabled,1:Enabled
+    // @User: Advanced
+    AP_GROUPINFO("TRJ_WCOMP_EN", 61, ParametersG2, traj_wcomp_enable, 0),
+
+    // @Param: TRJ_LOG_EN
+    // @DisplayName: Trajectory diagnostic logging enable
+    // @Description: Enables trajectory reference, controller, slip observer and wheel compensation diagnostic messages
+    // @Values: 0:Disabled,1:Enabled
+    // @User: Advanced
+    AP_GROUPINFO("TRJ_LOG_EN", 62, ParametersG2, traj_log_enable, 1),
+#endif
+
     AP_GROUPEND
 };
 
